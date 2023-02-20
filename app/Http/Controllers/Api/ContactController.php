@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ContactResource;
 use App\Models\Contact;
+use App\Models\User;
+use App\Notifications\NewContactMessage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -98,6 +100,9 @@ class ContactController extends Controller
                 if ($request->hasFile('attachment')) {
                     $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
                 }
+
+                $user = User::query()->first();
+                $user->notify(new NewContactMessage("A new user has visited on your application and sent a message."));
 
                 return response()->json([
                     'status' => 'success',
