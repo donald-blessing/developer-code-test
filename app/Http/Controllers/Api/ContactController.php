@@ -8,6 +8,7 @@ use App\Models\Contact;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Spatie\MediaLibrary\MediaCollections\Exceptions\FileDoesNotExist;
 use Spatie\MediaLibrary\MediaCollections\Exceptions\FileIsTooBig;
@@ -83,18 +84,21 @@ class ContactController extends Controller
                 ->where('message', $validated['message'])
                 ->first();
 
+
             if ($contact) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Duplicate upload',
                 ], 409);
             }
-
-            $contact = Contact::query()->create($validated);
-
-            if ($request->hasFile('attachment')) {
-                $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
-            }
+            
+            $contact = DB::transaction(function () use ($request, $validated) {
+                $contact = Contact::query()->create($validated);
+                if ($request->hasFile('attachment')) {
+                    $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
+                }
+                return $contact;
+            });
 
             return response()->json([
                 'status' => 'success',
@@ -135,7 +139,7 @@ class ContactController extends Controller
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => $e->getMessage(),
+                'message' => 'Contact not found',
             ], 404);
         } catch (Throwable $e) {
             return response()->json([
@@ -175,18 +179,29 @@ class ContactController extends Controller
                 ], 422);
             }
 
-            $contact = Contact::query()->findOrFail($id);
-            $contact->update($validator->validated());
+            $validated = $validator->validated();
 
-            if ($request->hasFile('attachment')) {
-                $contact->clearMediaCollection(Contact::MEDIA_COLLECTION);
-                $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
-            }
+            $contact = Contact::query()->findOrFail($id);
+            $contact = DB::transaction(function () use ($contact, $request, $validated) {
+                $contact->update($validated);
+
+                if ($request->hasFile('attachment')) {
+                    $contact->clearMediaCollection(Contact::MEDIA_COLLECTION);
+                    $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
+                }
+                return $contact;
+            });
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Contact updated successfully',
                 'contact' => new ContactResource($contact),
             ]);
+        } catch (FileUnacceptableForCollection  $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ], 500);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
