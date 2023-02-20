@@ -60,51 +60,51 @@ class ContactController extends Controller
         Request $request
     ): JsonResponse {
         try {
-            // Validate request
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|string',
-                'email' => 'required|email',
-                'message' => 'required|string',
-                'attachment' => 'required|file|mimes:csv,png,svg',
-            ]);
+            return DB::transaction(function () use ($request) {
+                // Validate request
+                $validator = Validator::make($request->all(), [
+                    'name' => 'required|string',
+                    'email' => 'required|email',
+                    'message' => 'required|string',
+                    'attachment' => 'required|file|mimes:csv,png,svg',
+                ]);
 
-            // If validation fails, return error response
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors()->first(),
-                ], 422);
-            }
-            $validated = $validator->validated();
+                // If validation fails, return error response
+                if ($validator->fails()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $validator->errors()->first(),
+                    ], 422);
+                }
+                $validated = $validator->validated();
 
-            //ensure that upload is not a duplicate
-            $contact = Contact::query()
-                ->where('name', $validated['name'])
-                ->where('email', $validated['email'])
-                ->where('message', $validated['message'])
-                ->first();
+                //ensure that upload is not a duplicate
+                $contact = Contact::query()
+                    ->where('name', $validated['name'])
+                    ->where('email', $validated['email'])
+                    ->where('message', $validated['message'])
+                    ->first();
 
 
-            if ($contact) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Duplicate upload',
-                ], 409);
-            }
-            
-            $contact = DB::transaction(function () use ($request, $validated) {
+                if ($contact) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Duplicate upload',
+                    ], 409);
+                }
+
+
                 $contact = Contact::query()->create($validated);
                 if ($request->hasFile('attachment')) {
                     $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
                 }
-                return $contact;
-            });
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Contact created successfully',
-                'contact' => new ContactResource($contact),
-            ]);
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Contact created successfully',
+                    'contact' => new ContactResource($contact),
+                ]);
+            });
         } catch (FileUnacceptableForCollection  $e) {
             return response()->json([
                 'status' => 'error',
@@ -130,12 +130,14 @@ class ContactController extends Controller
         int $id
     ): JsonResponse {
         try {
-            $contact = Contact::query()->findOrFail($id);
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Contact retrieved successfully',
-                'contact' => new ContactResource($contact),
-            ]);
+            return DB::transaction(function () use ($id) {
+                $contact = Contact::query()->findOrFail($id);
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Contact retrieved successfully',
+                    'contact' => new ContactResource($contact),
+                ]);
+            });
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
@@ -163,40 +165,40 @@ class ContactController extends Controller
         int $id
     ): JsonResponse {
         try {
-            // Validate request
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|string',
-                'email' => 'required|email',
-                'message' => 'required|string',
-                'attachment' => 'sometimes|file|mimes:csv,png,svg',
-            ]);
+            return DB::transaction(function () use ($request, $id) {
+                // Validate request
+                $validator = Validator::make($request->all(), [
+                    'name' => 'required|string',
+                    'email' => 'required|email',
+                    'message' => 'required|string',
+                    'attachment' => 'sometimes|file|mimes:csv,png,svg',
+                ]);
 
-            // If validation fails, return error response
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => $validator->errors()->first(),
-                ], 422);
-            }
+                // If validation fails, return error response
+                if ($validator->fails()) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $validator->errors()->first(),
+                    ], 422);
+                }
 
-            $validated = $validator->validated();
+                $validated = $validator->validated();
 
-            $contact = Contact::query()->findOrFail($id);
-            $contact = DB::transaction(function () use ($contact, $request, $validated) {
+                $contact = Contact::query()->findOrFail($id);
+
                 $contact->update($validated);
 
                 if ($request->hasFile('attachment')) {
                     $contact->clearMediaCollection(Contact::MEDIA_COLLECTION);
                     $contact->addMediaFromRequest('attachment')->toMediaCollection(Contact::MEDIA_COLLECTION);
                 }
-                return $contact;
-            });
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Contact updated successfully',
-                'contact' => new ContactResource($contact),
-            ]);
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Contact updated successfully',
+                    'contact' => new ContactResource($contact),
+                ]);
+            });
         } catch (FileUnacceptableForCollection  $e) {
             return response()->json([
                 'status' => 'error',
